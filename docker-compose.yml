@@ -1,0 +1,13 @@
+services:
+  frontend:
+    build:
+      context: .
+    image: bookstore-cloud-frontend:v1.0
+    container_name: bookstore-frontend
+    restart: unless-stopped
+    environment:
+      API_PROXY_PASS: http://host.docker.internal:18090
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "18080:80"
