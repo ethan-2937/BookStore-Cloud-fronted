@@ -264,7 +264,26 @@
           </div>
           <div class="header-actions">
             <el-button v-if="!isAdmin" type="primary" round @click="ticketDialog = true">新建工单</el-button>
-            <el-button round @click="loadTickets">刷新</el-button>
+            <el-button round @click="refreshSupportCenter">刷新</el-button>
+          </div>
+        </div>
+
+        <div class="faq-panel">
+          <div class="side-title">
+            <div>
+              <h2>客服知识库</h2>
+              <p>常见问题会同步提供给智能客服作为回答依据。</p>
+            </div>
+            <el-input v-model="faqSearch" clearable placeholder="搜索 FAQ" @keyup.enter="loadFaqs" />
+            <el-button round @click="loadFaqs">搜索</el-button>
+          </div>
+          <div class="faq-list">
+            <article v-for="faq in faqs" :key="faq.id" class="faq-card">
+              <el-tag size="small" effect="light">{{ faq.category }}</el-tag>
+              <strong>{{ faq.question }}</strong>
+              <p>{{ faq.answer }}</p>
+            </article>
+            <el-empty v-if="faqs.length === 0" description="暂无知识库内容" />
           </div>
         </div>
 
@@ -355,6 +374,12 @@
               <p>{{ message.content }}</p>
               <small v-if="message.source === 'LOCAL_FALLBACK'">本地书库推荐</small>
             </div>
+            <div v-if="message.toolResults?.length" class="ai-tool-results">
+              <span v-for="result in message.toolResults" :key="`${index}-${result.type}`">
+                <strong>{{ result.title }}</strong>
+                <small>{{ result.content }}</small>
+              </span>
+            </div>
             <div v-if="message.books?.length" class="ai-book-suggestions">
               <article v-for="book in message.books" :key="book.id" class="ai-book-card">
                 <div>
@@ -365,6 +390,26 @@
                   加入购物车
                 </el-button>
               </article>
+            </div>
+            <div v-if="message.faqs?.length" class="ai-faq-suggestions">
+              <article v-for="faq in message.faqs" :key="faq.id" class="ai-faq-card">
+                <small>{{ faq.category }}</small>
+                <strong>{{ faq.question }}</strong>
+                <p>{{ faq.answer }}</p>
+              </article>
+            </div>
+            <div v-if="message.toolActions?.length" class="ai-tool-actions">
+              <el-button
+                v-for="action in message.toolActions"
+                :key="`${index}-${action.type}-${action.label}`"
+                size="small"
+                round
+                type="primary"
+                plain
+                @click="executeAiAction(action, message)"
+              >
+                {{ action.label }}
+              </el-button>
             </div>
           </div>
           <div v-if="aiChatLoading" class="ai-chat-message assistant">
@@ -546,6 +591,8 @@ const adminOrders = ref([])
 const myReviews = ref([])
 const myTickets = ref([])
 const adminTickets = ref([])
+const faqs = ref([])
+const faqSearch = ref('')
 const activeTicket = ref(null)
 const activeMessages = ref([])
 const replyContent = ref('')
@@ -628,7 +675,7 @@ watch(
 )
 
 onMounted(async () => {
-  await Promise.all([loadCategories(), loadBooks()])
+  await Promise.all([loadCategories(), loadBooks(), loadFaqs()])
   if (isLoggedIn.value) {
     await Promise.all([loadOrders(), loadMyReviews(), loadTickets()])
   }
@@ -821,6 +868,9 @@ async function sendAiMessage(presetQuestion = '') {
       role: 'assistant',
       content: result.reply || result.message || '我暂时没有整理出合适答案，请稍后再试。',
       books: result.recommendedBooks || [],
+      faqs: result.matchedFaqs || [],
+      toolActions: result.toolActions || [],
+      toolResults: result.toolResults || [],
       source: result.source
     })
   } catch (error) {
@@ -836,6 +886,97 @@ async function sendAiMessage(presetQuestion = '') {
 
 function addAiBookToCart(book) {
   addToCart(book)
+}
+
+async function executeAiAction(action, message) {
+  if (!action) {
+    return
+  }
+  if (action.type === 'CREATE_ORDER_DRAFT') {
+    if (!requireLogin()) {
+      return
+    }
+    if (action.confirmRequired) {
+      await ElMessageBox.confirm('将推荐图书加入购物车，并打开结算窗口。是否继续？', '确认推荐订单', {
+        type: 'info'
+      })
+    }
+    const items = action.payload?.items || []
+    const added = addAiItemsToCart(items, message.books || [])
+    if (added > 0) {
+      ElMessage.success(`已加入 ${added} 本推荐图书`)
+      checkoutDialog.value = true
+    }
+    return
+  }
+  if (action.type === 'CREATE_SUPPORT_TICKET') {
+    if (!requireLogin()) {
+      return
+    }
+    await ElMessageBox.confirm('将根据这次咨询内容创建客服工单，管理员可在后台回复。是否继续？', '创建客服工单', {
+      type: 'info'
+    })
+    const result = await api(`/api/support/tickets?username=${encodeURIComponent(session.username)}`, {
+      method: 'POST',
+      body: {
+        subject: action.payload?.subject || '智能客服转人工',
+        content: action.payload?.content || message.content
+      }
+    })
+    if (!result.success) {
+      ElMessage.error(result.message || '创建工单失败')
+      return
+    }
+    ElMessage.success(`客服工单 #${result.ticketId} 已创建`)
+    await openSupport()
+    return
+  }
+  if (action.type === 'OPEN_ORDERS') {
+    await openOrders()
+    return
+  }
+  if (action.type === 'OPEN_SUPPORT') {
+    await openSupport()
+  }
+}
+
+function addAiItemsToCart(items, suggestedBooks = []) {
+  let added = 0
+  for (const item of items) {
+    const book = findAiBook(item, suggestedBooks)
+    if (!book || !book.stock) {
+      continue
+    }
+    const existing = cart.value.find(entry => entry.book.id === book.id)
+    const quantity = Math.max(1, Number(item.quantity || 1))
+    if (existing) {
+      if (existing.quantity + quantity <= book.stock) {
+        existing.quantity += quantity
+        added += 1
+      }
+    } else {
+      cart.value.push({ book, quantity: Math.min(quantity, book.stock) })
+      added += 1
+    }
+  }
+  if (added === 0) {
+    ElMessage.warning('推荐图书暂无库存或已在购物车中')
+  }
+  return added
+}
+
+function findAiBook(item, suggestedBooks) {
+  const bookId = Number(item.bookId)
+  return (
+    suggestedBooks.find(book => Number(book.id) === bookId) ||
+    books.value.find(book => Number(book.id) === bookId) || {
+      id: bookId,
+      title: item.title,
+      price: item.price,
+      stock: item.stock,
+      category: item.category
+    }
+  )
 }
 
 async function scrollAiMessages() {
@@ -1080,7 +1221,26 @@ async function openSupport() {
     return
   }
   currentView.value = 'support'
-  await loadTickets()
+  await refreshSupportCenter()
+}
+
+async function refreshSupportCenter() {
+  await Promise.all([loadTickets(), loadFaqs()])
+}
+
+async function loadFaqs() {
+  try {
+    const params = new URLSearchParams()
+    const keyword = faqSearch.value.trim()
+    if (keyword) {
+      params.set('keyword', keyword)
+    }
+    params.set('role', session.role || 'USER')
+    faqs.value = await api(`/api/faqs?${params.toString()}`)
+  } catch (error) {
+    faqs.value = []
+    ElMessage.warning(`知识库接口暂不可用：${readError(error)}`)
+  }
 }
 
 async function loadTickets() {

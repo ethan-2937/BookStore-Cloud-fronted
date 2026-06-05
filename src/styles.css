@@ -420,6 +420,7 @@ button {
 .book-card,
 .cart-card,
 .review-card,
+.faq-card,
 .ticket-card,
 .message-board {
   border: 1px solid var(--border);
@@ -625,6 +626,50 @@ button {
   display: grid;
   grid-template-columns: 330px minmax(0, 1fr);
   gap: 18px;
+}
+
+.faq-panel {
+  margin-bottom: 18px;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  background: linear-gradient(135deg, #ffffff, #f8fbff);
+}
+
+.faq-panel .side-title {
+  align-items: flex-start;
+}
+
+.faq-panel .el-input {
+  max-width: 260px;
+}
+
+.faq-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.faq-card {
+  padding: 14px;
+}
+
+.faq-card strong,
+.faq-card p {
+  display: block;
+}
+
+.faq-card strong {
+  margin-top: 8px;
+  font-size: 15px;
+}
+
+.faq-card p {
+  margin: 8px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.7;
 }
 
 .ticket-list {
@@ -859,6 +904,22 @@ button {
   gap: 8px;
 }
 
+.ai-tool-results,
+.ai-faq-suggestions,
+.ai-tool-actions {
+  display: grid;
+  width: 100%;
+  gap: 8px;
+}
+
+.ai-tool-results {
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+}
+
+.ai-tool-actions {
+  grid-template-columns: repeat(auto-fit, minmax(130px, max-content));
+}
+
 .ai-book-card {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
@@ -868,6 +929,60 @@ button {
   border: 1px solid var(--border);
   border-radius: 14px;
   background: rgba(255, 255, 255, 0.86);
+}
+
+.ai-tool-results span {
+  padding: 8px 10px;
+  border: 1px solid rgba(66, 133, 244, 0.16);
+  border-radius: 13px;
+  background: rgba(232, 240, 254, 0.72);
+}
+
+.ai-tool-results strong,
+.ai-tool-results small {
+  display: block;
+}
+
+.ai-tool-results strong {
+  color: var(--blue);
+  font-size: 12px;
+}
+
+.ai-tool-results small {
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.ai-faq-card {
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: rgba(248, 250, 253, 0.92);
+}
+
+.ai-faq-card small {
+  color: var(--blue);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.ai-faq-card strong {
+  display: block;
+  margin-top: 4px;
+  font-size: 13px;
+}
+
+.ai-faq-card p {
+  display: -webkit-box;
+  margin: 5px 0 0;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.55;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
 }
 
 .ai-book-card strong,

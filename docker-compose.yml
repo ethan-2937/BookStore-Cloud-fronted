@@ -2,7 +2,7 @@ services:
   frontend:
     build:
       context: .
-    image: bookstore-cloud-frontend:v1.0
+    image: bookstore-cloud-frontend:v1.2
     container_name: bookstore-frontend
     restart: unless-stopped
     environment:
