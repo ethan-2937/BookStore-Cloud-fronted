@@ -329,6 +329,72 @@
       </section>
     </main>
 
+    <div class="ai-chat-widget" :class="{ open: aiChatOpen }">
+      <button v-if="!aiChatOpen" class="ai-chat-fab" @click="openAiChat">
+        <span>AI</span>
+        <strong>智能客服</strong>
+      </button>
+
+      <section v-else class="ai-chat-panel" aria-label="智能客服">
+        <div class="ai-chat-head">
+          <div>
+            <strong>Bookstore 智能客服</strong>
+            <small>{{ aiChatLoading ? '正在整理推荐...' : '可咨询选书、订单、评论入口' }}</small>
+          </div>
+          <el-button text circle @click="aiChatOpen = false">×</el-button>
+        </div>
+
+        <div ref="aiMessageList" class="ai-chat-messages">
+          <div
+            v-for="(message, index) in aiMessages"
+            :key="index"
+            class="ai-chat-message"
+            :class="message.role"
+          >
+            <div class="ai-message-bubble">
+              <p>{{ message.content }}</p>
+              <small v-if="message.source === 'LOCAL_FALLBACK'">本地书库推荐</small>
+            </div>
+            <div v-if="message.books?.length" class="ai-book-suggestions">
+              <article v-for="book in message.books" :key="book.id" class="ai-book-card">
+                <div>
+                  <strong>{{ book.title }}</strong>
+                  <small>{{ book.category || '未分类' }} · ￥{{ money(book.price) }} · 库存 {{ book.stock ?? 0 }}</small>
+                </div>
+                <el-button size="small" round type="primary" :disabled="!book.stock" @click="addAiBookToCart(book)">
+                  加入购物车
+                </el-button>
+              </article>
+            </div>
+          </div>
+          <div v-if="aiChatLoading" class="ai-chat-message assistant">
+            <div class="ai-message-bubble typing">
+              <span></span>
+              <span></span>
+              <span></span>
+            </div>
+          </div>
+        </div>
+
+        <div class="ai-quick-questions">
+          <button v-for="question in aiQuickQuestions" :key="question" @click="askQuickAi(question)">
+            {{ question }}
+          </button>
+        </div>
+
+        <div class="ai-chat-input">
+          <el-input
+            v-model="aiChatInput"
+            type="textarea"
+            :autosize="{ minRows: 2, maxRows: 4 }"
+            placeholder="例如：我最近想学 Java 开发，买什么书？"
+            @keydown.enter.prevent="sendAiMessage()"
+          />
+          <el-button type="primary" round :loading="aiChatLoading" @click="sendAiMessage()">发送</el-button>
+        </div>
+      </section>
+    </div>
+
     <el-dialog v-model="authDialog" width="420px" class="rounded-dialog" title="账号登录">
       <el-tabs v-model="authMode" stretch>
         <el-tab-pane label="用户登录" name="user" />
@@ -453,7 +519,7 @@
 </template>
 
 <script setup>
-import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 
 const storedSession = JSON.parse(localStorage.getItem('bookstore-session') || '{}')
@@ -483,6 +549,17 @@ const adminTickets = ref([])
 const activeTicket = ref(null)
 const activeMessages = ref([])
 const replyContent = ref('')
+const aiChatOpen = ref(false)
+const aiChatInput = ref('')
+const aiChatLoading = ref(false)
+const aiMessageList = ref(null)
+const aiQuickQuestions = ['Java 后端怎么入门？', '推荐几本算法书', '订单怎么评价？']
+const aiMessages = ref([
+  {
+    role: 'assistant',
+    content: '你好，我是 Bookstore 智能客服。你可以问我选书建议、学习路线、订单和评论入口。'
+  }
+])
 
 const authDialog = ref(false)
 const authMode = ref('user')
@@ -697,6 +774,74 @@ async function handleUserCommand(command) {
   }
   if (command === 'logout') {
     logout()
+  }
+}
+
+async function openAiChat() {
+  aiChatOpen.value = true
+  await scrollAiMessages()
+}
+
+async function askQuickAi(question) {
+  if (aiChatLoading.value) {
+    return
+  }
+  await sendAiMessage(question)
+}
+
+async function sendAiMessage(presetQuestion = '') {
+  const question = (presetQuestion || aiChatInput.value).trim()
+  if (!question || aiChatLoading.value) {
+    return
+  }
+  aiChatOpen.value = true
+  aiChatInput.value = ''
+  aiMessages.value.push({ role: 'user', content: question })
+  aiChatLoading.value = true
+  await scrollAiMessages()
+
+  try {
+    const history = aiMessages.value
+      .slice(-9, -1)
+      .filter(message => ['user', 'assistant'].includes(message.role))
+      .map(message => ({ role: message.role, content: message.content }))
+    const params = new URLSearchParams()
+    if (session.username) {
+      params.set('username', session.username)
+    }
+    params.set('role', session.role || 'USER')
+    const result = await api(`/api/ai/chat?${params.toString()}`, {
+      method: 'POST',
+      body: {
+        message: question,
+        history
+      }
+    })
+    aiMessages.value.push({
+      role: 'assistant',
+      content: result.reply || result.message || '我暂时没有整理出合适答案，请稍后再试。',
+      books: result.recommendedBooks || [],
+      source: result.source
+    })
+  } catch (error) {
+    aiMessages.value.push({
+      role: 'assistant',
+      content: `智能客服暂时连接不上：${readError(error)}。你可以先用搜索框查找图书，或到客服中心提交工单。`
+    })
+  } finally {
+    aiChatLoading.value = false
+    await scrollAiMessages()
+  }
+}
+
+function addAiBookToCart(book) {
+  addToCart(book)
+}
+
+async function scrollAiMessages() {
+  await nextTick()
+  if (aiMessageList.value) {
+    aiMessageList.value.scrollTop = aiMessageList.value.scrollHeight
   }
 }
 

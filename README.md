@@ -51,6 +51,7 @@ docker compose up -d --build
 - Category and keyword search
 - Cart and order creation
 - Pay/cancel orders
+- Floating AI customer service chat for book recommendations
 - Review purchased books from order items
 - User dropdown for orders, support, reviews, and logout
 - Admin login for book/order/support management
